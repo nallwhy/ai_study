@@ -1,0 +1,97 @@
+# Let's build GPT: from scratch, in code, spelled out.
+
+```elixir
+Mix.install([
+  {:req, "~> 0.3"},
+  {:nx, "~> 0.5"}
+])
+```
+
+## Introduction
+
+This livebook is an Elixir implementation of [Let's build GPT: from scratch, in code, spelled out.](https://www.youtube.com/watch?v=kCc8FmEb1nY).
+
+## Prepare Data
+
+```elixir
+# We always start with a dataset to train on. Let's download the tiny shakespeare dataset
+
+dataset_url =
+  "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+
+%{body: dataset} = Req.get!(dataset_url)
+```
+
+```elixir
+dataset |> String.length() |> IO.inspect(label: "length of dataset")
+```
+
+```elixir
+# let's look at the first 1000 characters
+
+dataset |> String.slice(0..999) |> IO.puts()
+```
+
+```elixir
+# here are all the unique characters that occur in this text
+
+chars = String.to_charlist(dataset) |> Enum.uniq() |> Enum.sort() |> IO.inspect(label: "chars")
+vocab_size = chars |> Enum.count() |> IO.inspect(label: "vocab_size")
+```
+
+```elixir
+# create a mapping from characters to integers
+# !! chars are already integers. does this mapping is requried?
+
+[stoi, itos] =
+  chars
+  |> Enum.with_index()
+  |> Enum.map(fn {char, i} -> [{char, i}, {i, char}] end)
+  |> Enum.zip_with(& &1)
+  |> Enum.map(&(&1 |> Map.new()))
+
+defmodule Tokenizer do
+  @moduledoc """
+  Simple tokenizer.
+  OpenAI uses [tiktoken](https://github.com/openai/tiktoken) as a tokenizer.
+  """
+
+  @stoi stoi
+  @itos itos
+
+  def encode(string) do
+    string
+    |> String.to_charlist()
+    |> Enum.map(&@stoi[&1])
+  end
+
+  def decode(encoded_string) when is_list(encoded_string) do
+    encoded_string
+    |> Enum.map(&@itos[&1])
+    |> List.to_string()
+  end
+end
+
+Tokenizer.encode("hii there") |> IO.inspect(label: "encode")
+Tokenizer.decode(Tokenizer.encode("hii there")) |> IO.inspect(label: "decode")
+```
+
+```elixir
+# let's now encode the entire text dataset and store it into a torch.Tensor
+
+tensor = Tokenizer.encode(dataset) |> Nx.tensor()
+
+_tensor_type = tensor |> Nx.type() |> IO.inspect(label: "tensor type")
+tensor_size = tensor |> Nx.size() |> IO.inspect(label: "tensor size")
+
+tensor[0..999] |> IO.inspect()
+```
+
+```elixir
+# Let's now split up the data into train and validation sets
+
+n = trunc(tensor_size * 0.9) - 1
+
+train_tensor = tensor[0..n] |> IO.inspect()
+val_tensor = tensor[(n + 1)..-1//1] |> IO.inspect()
+```
